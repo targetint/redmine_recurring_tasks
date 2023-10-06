@@ -1,12 +1,15 @@
+$LOAD_PATH.unshift "#{File.dirname(__FILE__)}/lib/"
 require 'redmine_recurring_tasks'
+require 'redmine_recurring_tasks/hooks/issue_view_hook.rb'
+require 'redmine_recurring_tasks/patches/issue_patch.rb'
 
-reloader = defined?(ActiveSupport::Reloader) ? ActiveSupport::Reloader : ActionDispatch::Reloader
-reloader.to_prepare do
-  paths = '/lib/redmine_recurring_tasks/{patches/*_patch,hooks/*_hook}.rb'
-  Dir.glob(File.dirname(__FILE__) + paths).each do |file|
-    require_dependency file
-  end
-end
+# reloader = defined?(ActiveSupport::Reloader) ? ActiveSupport::Reloader : ActionDispatch::Reloader
+# reloader.to_prepare do
+#   paths = '/lib/redmine_recurring_tasks/{patches/*_patch,hooks/*_hook}.rb'
+#   Dir.glob(File.dirname(__FILE__) + paths).each do |file|
+#     require_dependency file
+#   end
+# end
 
 Rails.application.config.eager_load_paths += Dir.glob("#{Rails.application.config.root}/plugins/redmine_recurring_tasks/{lib,app/models,app/controllers}")
 

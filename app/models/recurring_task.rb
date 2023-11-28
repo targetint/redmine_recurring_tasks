@@ -76,19 +76,20 @@ class RecurringTask < ActiveRecord::Base
 
     # months
     scope = where("months LIKE '%\"#{current_time.month.to_s}\"%'")
-    # scope.select do |schedule|
-    #   if schedule.month_days.empty?
-    #     # week day
-    #     next unless schedule.public_send(week_day)
-    #   else
-    #     # month day
-    #     month_days = schedule.month_days_parsed
-    #     next unless month_days.include?(month_day.to_s)
-    #   end
 
-    #   # time
-    #   schedule.time_came?(current_time)
-    # end
+    scope.select do |schedule|
+      if schedule.month_days.empty?
+        # week day
+        next unless schedule.public_send(week_day)
+      else
+        # month day
+        month_days = schedule.month_days_parsed
+        next unless month_days.include?(month_day.to_s)
+      end
+
+      # time
+      schedule.time_came?(current_time)
+    end
   end
 
   # @return [Issue] copied issue

@@ -76,20 +76,19 @@ class RecurringTask < ActiveRecord::Base
 
     # months
     scope = where("months LIKE '%\"#{current_time.month.to_s}\"%'")
+    # scope.select do |schedule|
+    #   if schedule.month_days.empty?
+    #     # week day
+    #     next unless schedule.public_send(week_day)
+    #   else
+    #     # month day
+    #     month_days = schedule.month_days_parsed
+    #     next unless month_days.include?(month_day.to_s)
+    #   end
 
-    scope.select do |schedule|
-      if schedule.month_days.empty?
-        # week day
-        next unless schedule.public_send(week_day)
-      else
-        # month day
-        month_days = schedule.month_days_parsed
-        next unless month_days.include?(month_day.to_s)
-      end
-
-      # time
-      schedule.time_came?(current_time)
-    end
+    #   # time
+    #   schedule.time_came?(current_time)
+    # end
   end
 
   # @return [Issue] copied issue
@@ -114,7 +113,7 @@ class RecurringTask < ActiveRecord::Base
         copy.custom_field_values = original.custom_field_values.inject({}) { |h, v| h[v.custom_field_id] = v.value; h }
         copy.author_id = new_author.id
         copy.tracker_id = original.tracker_id
-        copy.parent_issue_id = original.parent_id
+        copy.parent_issue_id = original.id
         copy.status_id =
           case settings['copied_issue_status']
           when nil

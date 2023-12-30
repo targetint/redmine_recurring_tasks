@@ -73,7 +73,6 @@ class RecurringTask < ActiveRecord::Base
   def self.schedules(current_time = Time.now)
     week_day  = current_time.strftime('%A').downcase
     month_day = current_time.day
-
     # months
     scope = where("months LIKE '%\"#{current_time.month.to_s}\"%'")
 
@@ -86,7 +85,6 @@ class RecurringTask < ActiveRecord::Base
         month_days = schedule.month_days_parsed
         next unless month_days.include?(month_day.to_s)
       end
-
       # time
       schedule.time_came?(current_time)
     end
@@ -95,50 +93,60 @@ class RecurringTask < ActiveRecord::Base
   # @return [Issue] copied issue
   def copy_issue(associations = [])
     return if issue.project.archived? || issue.project.closed?
-
+    copied_to = nil
     settings = Setting.find_by(name: :plugin_redmine_recurring_tasks)&.value || {}
-
-    issue.deep_clone(include: associations, except: %i[parent_id root_id lft rgt created_on updated_on closed_on]) do |original, copy|
-      case original
-      when Issue
-        copy.init_journal(original.author)
-        new_author =
-          if settings['use_anonymous_user']
-            User.anonymous
-          else
-            unless original.author.allowed_to?(:copy_issues, issue.project)
-              raise UnauthorizedError, "User #{original.author.name} (##{original.author.id}) unauthorized to copy issues"
+    begin
+      issue.deep_clone(include: associations, except: %i[parent_id root_id lft rgt created_on updated_on closed_on]) do |original, copy|
+        case original
+        when Issue
+          copy.init_journal(original.author)
+          new_author =
+            if settings['use_anonymous_user']
+              User.anonymous
+            else
+              unless original.author.allowed_to?(:copy_issues, issue.project)
+                raise UnauthorizedError, "User #{original.author.name} (##{original.author.id}) unauthorized to copy issues"
+              end
+              original.author
+              # User.current = original.author
             end
-            original.author
+          copy.custom_field_values = original.custom_field_values.inject({}) { |h, v| h[v.custom_field_id] = v.value; h }
+          copy.author_id = new_author.id
+          copy.tracker_id = original.tracker_id
+          copy.parent_issue_id = original.parent_issue_id
+          copy.status_id =
+            case settings['copied_issue_status']
+            when nil
+              copy.new_statuses_allowed_to(original.author).sort_by(&:position).first&.id
+            when '0'
+              original.status_id
+            else
+              settings['copied_issue_status']
+            end
+          copy.attachments = original.attachments.map do |attachement|
+            attachement.copy(container: original)
           end
-        copy.custom_field_values = original.custom_field_values.inject({}) { |h, v| h[v.custom_field_id] = v.value; h }
-        copy.author_id = new_author.id
-        copy.tracker_id = original.tracker_id
-        copy.parent_issue_id = original.parent_id
-        copy.status_id =
-          case settings['copied_issue_status']
-          when nil
-            copy.new_statuses_allowed_to(original.author).sort_by(&:position).first&.id
-          when '0'
-            original.status_id
-          else
-            settings['copied_issue_status']
+          copy.watcher_user_ids = original.watcher_users.select { |u| u.status == User::STATUS_ACTIVE }.map(&:id)
+
+          copy.start_date = Time.now
+
+          if copy.taggings.present? && copy.taggings.size != original.taggings.size
+            copy.taggings = copy.taggings.select{|t| t.context.present? }
           end
-        copy.attachments = original.attachments.map do |attachement|
-          attachement.copy(container: original)
+          copied_to = copy
+          if original.due_date.present?
+            issue_date = (original.start_date || original.created_on).to_date
+            copy.due_date = copy.start_date + (original.due_date.to_date - issue_date)
+          end
+        else
+          next
         end
-        copy.watcher_user_ids = original.watcher_users.select { |u| u.status == User::STATUS_ACTIVE }.map(&:id)
-
-        copy.start_date = Time.now
-
-        if original.due_date.present?
-          issue_date = (original.start_date || original.created_on).to_date
-          copy.due_date = copy.start_date + (original.due_date - issue_date)
-        end
-      else
-        next
-      end
-    end.tap(&:save!)
+      end.tap(&:save!)
+      issue.relations_from.create(issue_to_id: copied_to.id, relation_type: "copied_to")
+    rescue ActiveRecord::StaleObjectError
+      copied_to.reload
+      retry
+    end
   end
 
   # @return [Boolean] boolean result of copy issue and save of schedule last try timestamp
@@ -153,10 +161,20 @@ class RecurringTask < ActiveRecord::Base
   end
 
   def time_came?(current_time = Time.now)
-    utc_offset = current_time.utc_offset / 60 / 60
-    utc_offset -= 1 if time.in_time_zone(utc_offset).dst?
-    time.in_time_zone(utc_offset).strftime('%H%M%S').to_i <= current_time.strftime('%H%M%S').to_i &&
-      (last_try_at.nil? || last_try_at.in_time_zone(utc_offset).strftime('%Y%m%d').to_i < current_time.strftime('%Y%m%d').to_i)
+    current_localtime = current_time.localtime
+    self.months.include?(current_localtime.month.to_s) && day_check(current_localtime.wday) && 
+    ((time.hour == current_localtime.hour && time.min == current_localtime.min) || 
+    (((last_try_at.present? && last_try_at.today? && time.hour == current_localtime.hour && time.min == current_localtime.min) || 
+    ((last_try_at.blank? || !last_try_at.today?) && time.hour <= current_localtime.hour && time.min <= current_localtime.min))))
+    # utc_offset = current_time.utc_offset / 60 / 60
+    # utc_offset -= 1 if time.in_time_zone(utc_offset).dst?
+    # time.in_time_zone(utc_offset).strftime('%H%M%S').to_i <= current_time.strftime('%H%M%S').to_i &&
+    #   (last_try_at.nil? || last_try_at.in_time_zone(utc_offset).strftime('%Y%m%d').to_i < current_time.strftime('%Y%m%d').to_i)
+  end
+
+  def day_check(current_day)
+    _days = {'0'=>'sunday','1'=>'monday','2'=>'tuesday','3'=>'wednesday','4'=>'thursday','5'=>'friday','6'=>'saturday'}
+    return self.send(_days[current_day.to_s].to_sym)
   end
 
   private

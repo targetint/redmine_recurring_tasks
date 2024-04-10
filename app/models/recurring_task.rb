@@ -162,7 +162,7 @@ class RecurringTask < ActiveRecord::Base
 
   def time_came?(current_time = Time.now)
     current_localtime = current_time.localtime
-    self.months.include?(current_localtime.month.to_s) && (day_check(current_localtime.wday) || self.month_days.include?(current_localtime.day)) && 
+    self.months.include?(current_localtime.month.to_s) && (day_check(current_localtime.wday) || self.month_days.include?(current_localtime.day.to_s)) && 
     ((time.hour == current_localtime.hour && time.min == current_localtime.min) || 
     (((last_try_at.present? && last_try_at.today? && time.hour == current_localtime.hour && time.min == current_localtime.min) || 
     ((last_try_at.blank? || !last_try_at.today?) && time.hour <= current_localtime.hour && time.min <= current_localtime.min))))

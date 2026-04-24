@@ -164,8 +164,8 @@ class RecurringTask < ActiveRecord::Base
     current_localtime = current_time.localtime
     self.months.include?(current_localtime.month.to_s) && (day_check(current_localtime.wday) || self.month_days.include?(current_localtime.day.to_s)) && 
     ((time.hour == current_localtime.hour && time.min == current_localtime.min) || 
-    (((last_try_at.present? && last_try_at.today? && time.hour == current_localtime.hour && time.min == current_localtime.min) || 
-    ((last_try_at.blank? || !last_try_at.today?) && time.hour <= current_localtime.hour && time.min <= current_localtime.min))))
+    (((last_try_at.present? && last_try_at.localtime.today? && time.hour == current_localtime.hour && time.min == current_localtime.min) || 
+    ((last_try_at.blank? || !last_try_at.localtime.today?) && time.hour <= current_localtime.hour && time.min <= current_localtime.min))))
     # utc_offset = current_time.utc_offset / 60 / 60
     # utc_offset -= 1 if time.in_time_zone(utc_offset).dst?
     # time.in_time_zone(utc_offset).strftime('%H%M%S').to_i <= current_time.strftime('%H%M%S').to_i &&

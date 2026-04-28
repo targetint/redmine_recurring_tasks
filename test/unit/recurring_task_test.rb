@@ -156,16 +156,37 @@ class RecurringTaskTest < ActiveSupport::TestCase
   def test_time_came
     current_time = Time.parse('10:00:00')
     schedule = RecurringTask.new(time: current_time)
+    set_schedule_day(schedule, current_time)
+
     assert schedule.time_came?(current_time)
     assert schedule.time_came?(current_time + 1.minute)
     refute schedule.time_came?(current_time - 1.minute)
     refute schedule.time_came?(current_time + 14.hours)
   end
 
+  def test_time_came_when_hour_has_passed
+    current_time = Time.parse('11:00:00')
+    schedule = RecurringTask.new(time: Time.parse('10:55:00'))
+    set_schedule_day(schedule, current_time)
+
+    assert schedule.time_came?(current_time)
+  end
+
+  def test_time_does_not_come_again_after_last_try_at_today
+    current_time = Time.parse('10:00:00')
+    schedule = RecurringTask.new(time: current_time, last_try_at: current_time)
+    set_schedule_day(schedule, current_time)
+
+    refute schedule.time_came?(current_time)
+    refute schedule.time_came?(current_time + 5.minutes)
+  end
+
   def test_time_came_if_last_try_at_is_earlier_than_current_day
     current_time = Time.parse('00:00:00')
     last_try_at = current_time - 1.day
     schedule = RecurringTask.new(time: current_time, last_try_at: last_try_at)
+    set_schedule_day(schedule, current_time)
+
     assert schedule.time_came?(current_time)
   end
 
@@ -173,6 +194,8 @@ class RecurringTaskTest < ActiveSupport::TestCase
     current_time = Time.parse('00:00:00')
     last_try_at = current_time + 1.minute
     schedule = RecurringTask.new(time: current_time, last_try_at: last_try_at)
+    set_schedule_day(schedule, current_time)
+
     refute schedule.time_came?(current_time)
   end
 
@@ -180,6 +203,8 @@ class RecurringTaskTest < ActiveSupport::TestCase
     current_time = Time.parse('00:00:00')
     last_try_at = current_time + 1.day
     schedule = RecurringTask.new(time: current_time, last_try_at: last_try_at)
+    set_schedule_day(schedule, current_time)
+
     refute schedule.time_came?(current_time)
   end
 
@@ -203,5 +228,9 @@ class RecurringTaskTest < ActiveSupport::TestCase
     project = Project.new
     project.status = Project::STATUS_ARCHIVED
     RecurringTask.new(issue: Issue.new(project: project))
+  end
+
+  def set_schedule_day(schedule, time)
+    schedule.public_send("#{time.strftime('%A').downcase}=", true)
   end
 end

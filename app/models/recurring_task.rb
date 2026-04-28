@@ -151,8 +151,8 @@ class RecurringTask < ActiveRecord::Base
 
   # @return [Boolean] boolean result of copy issue and save of schedule last try timestamp
   def execute(associations = nil)
-    self.last_try_at = Time.now
-    copy_issue(associations) && save
+    update_column(:last_try_at, Time.now)
+    copy_issue(associations).present?
   end
 
   # @return [Symbol] return :month_days if any month days are present, else :week_days
@@ -162,10 +162,13 @@ class RecurringTask < ActiveRecord::Base
 
   def time_came?(current_time = Time.now)
     current_localtime = current_time.localtime
-    self.months.include?(current_localtime.month.to_s) && (day_check(current_localtime.wday) || self.month_days.include?(current_localtime.day.to_s)) && 
-    ((time.hour == current_localtime.hour && time.min == current_localtime.min) || 
-    (((last_try_at.present? && last_try_at.localtime.today? && time.hour == current_localtime.hour && time.min == current_localtime.min) || 
-    ((last_try_at.blank? || !last_try_at.localtime.today?) && time.hour <= current_localtime.hour && time.min <= current_localtime.min))))
+    scheduled_time = (time.hour * 60) + time.min
+    current_time_of_day = (current_localtime.hour * 60) + current_localtime.min
+
+    self.months.include?(current_localtime.month.to_s) &&
+      (day_check(current_localtime.wday) || self.month_days_parsed.include?(current_localtime.day.to_s)) &&
+      scheduled_time <= current_time_of_day &&
+      (last_try_at.blank? || last_try_at.localtime.to_date < current_localtime.to_date)
     # utc_offset = current_time.utc_offset / 60 / 60
     # utc_offset -= 1 if time.in_time_zone(utc_offset).dst?
     # time.in_time_zone(utc_offset).strftime('%H%M%S').to_i <= current_time.strftime('%H%M%S').to_i &&

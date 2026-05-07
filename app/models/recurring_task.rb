@@ -95,10 +95,12 @@ class RecurringTask < ActiveRecord::Base
     return if issue.project.archived? || issue.project.closed?
     copied_to = nil
     settings = Setting.find_by(name: :plugin_redmine_recurring_tasks)&.value || {}
+    logger.info("RecurringTask ##{id}: start copying issue ##{issue.id}")
     begin
       issue.deep_clone(include: associations, except: %i[parent_id root_id lft rgt created_on updated_on closed_on]) do |original, copy|
         case original
         when Issue
+          logger.info("RecurringTask ##{id}: copying source issue ##{original.id}")
           copy.init_journal(original.author)
           new_author =
             if settings['use_anonymous_user']
@@ -141,11 +143,15 @@ class RecurringTask < ActiveRecord::Base
         else
           next
         end
-      end.tap(&:save!)
+      end.tap { |copy| copy.save!(validate: false) }
       issue.relations_from.create(issue_to_id: copied_to.id, relation_type: "copied_to")
+      logger.info("RecurringTask ##{id}: issue ##{issue.id} copied to ##{copied_to&.id}")
     rescue ActiveRecord::StaleObjectError
       copied_to.reload
       retry
+    rescue StandardError => e
+      log_error(e)
+      raise
     end
   end
 
@@ -181,6 +187,16 @@ class RecurringTask < ActiveRecord::Base
   end
 
   private
+
+  def log_error(e)
+    logger.error e.to_s
+    logger.error e.backtrace.join("\n")
+  end
+
+  # @return [Logger] a log class
+  def logger
+    @logger ||= Logger.new(Rails.root.join('log', 'redmine_recurring_tasks.log'))
+  end
 
   def default_month_days
     []

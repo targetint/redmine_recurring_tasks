@@ -23,3 +23,12 @@ en:
   settings_use_anonymous_user: Use anonymous user while copying issues
   settings_copied_issue_status: Copied issues status
   settings_copy_from_original: Copy from original issue
+
+  label_recurring_tasks: Recurring Tasks
+  label_admin_recurring_tasks: Recurring Tasks
+  label_days: Days
+  label_month_days: Month Days
+  label_months: Months
+  label_last_try_at: Last Run
+  label_issue_deleted: Issue deleted
+  field_time: Time

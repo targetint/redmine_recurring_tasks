@@ -1,0 +1,65 @@
+<h2><%= l(:label_recurring_tasks) %></h2>
+
+<%= form_tag(admin_recurring_tasks_path, method: :get, id: 'recurring-tasks-filter') do %>
+  <p>
+    <label><%= l(:field_project) %>:</label>
+    <%= select_tag :project_id,
+          options_from_collection_for_select(@projects, :id, :name, @selected_project_id),
+          include_blank: true,
+          id: 'recurring_tasks_project_id' %>
+  </p>
+<% end %>
+
+<%= javascript_tag do %>
+  $(document).ready(function() {
+    $('#recurring_tasks_project_id').select2({
+      placeholder: '<%= j l(:label_all) %>',
+      allowClear: true,
+      width: '300px'
+    }).on('change', function() {
+      $('#recurring-tasks-filter').submit();
+    });
+  });
+<% end %>
+
+<% if @recurring_tasks.any? %>
+  <table class="list recurring-tasks">
+    <thead>
+      <tr>
+        <th><%= l(:field_project) %></th>
+        <th><%= l(:field_issue) %></th>
+        <th><%= l(:field_tracker) %></th>
+        <th><%= l(:field_time) %></th>
+        <th><%= l(:label_days) %></th>
+        <th><%= l(:label_month_days) %></th>
+        <th><%= l(:label_months) %></th>
+        <th><%= l(:label_last_try_at) %></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @recurring_tasks.each_with_index do |task, i| %>
+        <tr class="<%= i.even? ? 'odd' : 'even' %>">
+          <td><%= task.issue&.project&.name %></td>
+          <td>
+            <% if task.issue %>
+              <%= link_to "##{task.issue.id} #{task.issue.subject}", issue_path(task.issue) %>
+            <% else %>
+              <span class="icon icon-warning"><%= l(:label_issue_deleted) %></span>
+            <% end %>
+          </td>
+          <td><%= task.tracker&.name %></td>
+          <td><%= task.time&.strftime('%H:%M') %></td>
+          <td><%= task.days.map(&:humanize).join(', ').presence || '-' %></td>
+          <td><%= task.month_days.join(', ').presence || '-' %></td>
+          <td>
+            <% months = task.months.map { |m| Date::MONTHNAMES[m.to_i] }.compact %>
+            <%= months.size == 12 ? l(:label_all) : months.join(', ') %>
+          </td>
+          <td><%= task.last_try_at ? format_time(task.last_try_at) : '-' %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% else %>
+  <p class="nodata"><%= l(:label_no_data) %></p>
+<% end %>

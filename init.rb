@@ -35,4 +35,9 @@ Redmine::Plugin.register :redmine_recurring_tasks do
     permission :view_schedule,   recurring_tasks: :show, read: true
     permission :manage_schedule, recurring_tasks: [:new, :edit, :destroy, :update], require: :loggedin
   end
+
+  menu :admin_menu, :recurring_tasks,
+       { controller: 'admin_recurring_tasks', action: 'index' },
+       caption: :label_admin_recurring_tasks,
+       html: { class: 'icon' }
 end

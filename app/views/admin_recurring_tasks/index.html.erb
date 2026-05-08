@@ -33,7 +33,10 @@
         <th><%= l(:label_days) %></th>
         <th><%= l(:label_month_days) %></th>
         <th><%= l(:label_months) %></th>
-        <th><%= l(:label_last_try_at) %></th>
+        <th><%= l(:field_author) %></th>
+        <th><%= l(:field_status) %></th>
+        <th><%= l(:label_recurring_task_author) %></th>
+        <th><%= l(:field_last_try_at) %></th>
       </tr>
     </thead>
     <tbody>
@@ -55,6 +58,9 @@
             <% months = task.months.map { |m| Date::MONTHNAMES[m.to_i] }.compact %>
             <%= months.size == 12 ? l(:label_all) : months.join(', ') %>
           </td>
+          <td><%= task.issue&.author&.name %></td>
+          <td><%= task.issue&.status&.name %></td>
+          <td><%= task.author&.name %></td>
           <td><%= task.last_try_at ? format_time(task.last_try_at) : '-' %></td>
         </tr>
       <% end %>

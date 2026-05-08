@@ -3,6 +3,7 @@ class RecurringTask < ActiveRecord::Base
 
   belongs_to :issue
   belongs_to :tracker
+  belongs_to :author, class_name: 'User', optional: true
 
   validates :issue_id,    presence: true, uniqueness: true
   validates :tracker_id,  presence: true
@@ -24,6 +25,10 @@ class RecurringTask < ActiveRecord::Base
         self.month_days = []
       end
     end
+  end
+
+  before_create do
+    self.author ||= User.current
   end
 
   # @return [Array<String>] array of days when schedule should be executed

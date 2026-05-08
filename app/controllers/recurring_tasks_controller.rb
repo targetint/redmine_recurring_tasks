@@ -15,6 +15,7 @@ class RecurringTasksController < ApplicationController
   def create
     @schedule = RecurringTask.new
     @schedule.issue = @issue
+    @schedule.author = User.current
     @schedule.assign_attributes(recurring_task_params)
     if @schedule.save
       redirect_to issue_path(@issue)

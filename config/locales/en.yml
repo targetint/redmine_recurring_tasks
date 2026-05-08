@@ -32,3 +32,5 @@ en:
   label_last_try_at: Last Run
   label_issue_deleted: Issue deleted
   field_time: Time
+  field_last_try_at: Last Run
+  label_recurring_task_author: Schedule Created By

@@ -4,7 +4,7 @@ class AdminRecurringTasksController < ApplicationController
 
   def index
     @projects = Project.all.sorted
-    scope = RecurringTask.includes(issue: :project, tracker: [])
+    scope = RecurringTask.includes(:author, issue: [:project, :author, :status], tracker: [])
     if params[:project_id].present?
       @selected_project_id = params[:project_id].to_i
       scope = scope.joins(:issue).where(issues: { project_id: @selected_project_id })

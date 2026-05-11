@@ -99,7 +99,7 @@ class RecurringTask < ActiveRecord::Base
   def copy_issue(associations = [])
     return if issue.project.archived? || issue.project.closed?
     copied_to = nil
-    selected_associations = Array(associations).map(&:to_s).reject(&:blank?)
+    selected_associations = normalize_associations(associations)
     settings = Setting.find_by(name: :plugin_redmine_recurring_tasks)&.value || {}
     logger.info("RecurringTask ##{id}: start copying issue ##{issue.id}")
     begin
@@ -191,6 +191,17 @@ class RecurringTask < ActiveRecord::Base
 
   private
 
+  def normalize_associations(associations)
+    Array(associations).map(&:to_s).reject(&:blank?).map do |association_name|
+      case association_name
+      when 'taggings', 'base_tags', 'tag_taggings', 'tags'
+        'tags'
+      else
+        association_name
+      end
+    end.uniq
+  end
+
   def copy_associations_after_creation!(copied_issue, associations)
     associations.each do |association_name|
       begin
@@ -204,9 +215,11 @@ class RecurringTask < ActiveRecord::Base
 
   def copy_single_association!(copied_issue, association_name)
     case association_name
-    when 'taggings', 'tags'
+    when 'tags'
       copied_issue.taggings.destroy_all if copied_issue.respond_to?(:taggings)
-      issue.tags.each { |tag| copied_issue.tags << tag } if copied_issue.respond_to?(:tags)
+      if copied_issue.respond_to?(:tags)
+        issue.tags.uniq.each { |tag| copied_issue.tags << tag unless copied_issue.tags.include?(tag) }
+      end
     when 'watcher_users', 'watchers'
       copied_issue.watcher_user_ids = issue.watcher_users.select { |u| u.status == User::STATUS_ACTIVE }.map(&:id)
     when 'attachments'

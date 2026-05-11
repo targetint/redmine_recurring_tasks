@@ -99,10 +99,12 @@ class RecurringTask < ActiveRecord::Base
   def copy_issue(associations = [])
     return if issue.project.archived? || issue.project.closed?
     copied_to = nil
+    selected_associations = Array(associations).map(&:to_s).reject(&:blank?)
     settings = Setting.find_by(name: :plugin_redmine_recurring_tasks)&.value || {}
     logger.info("RecurringTask ##{id}: start copying issue ##{issue.id}")
     begin
-      issue.deep_clone(include: associations, except: %i[parent_id root_id lft rgt created_on updated_on closed_on]) do |original, copy|
+      # Create the issue first, then copy selected associations in a second phase.
+      issue.deep_clone(include: [], except: %i[parent_id root_id lft rgt created_on updated_on closed_on]) do |original, copy|
         case original
         when Issue
           logger.info("RecurringTask ##{id}: copying source issue ##{original.id}")
@@ -130,16 +132,9 @@ class RecurringTask < ActiveRecord::Base
             else
               settings['copied_issue_status']
             end
-          copy.attachments = original.attachments.map do |attachement|
-            attachement.copy(container: original)
-          end
-          copy.watcher_user_ids = original.watcher_users.select { |u| u.status == User::STATUS_ACTIVE }.map(&:id)
 
           copy.start_date = Time.now
 
-          if copy.taggings.present? && copy.taggings.size != original.taggings.size
-            copy.taggings = copy.taggings.select{|t| t.context.present? }
-          end
           copied_to = copy
           if original.due_date.present?
             issue_date = (original.start_date || original.created_on).to_date
@@ -149,6 +144,9 @@ class RecurringTask < ActiveRecord::Base
           next
         end
       end.tap { |copy| copy.save!(validate: false) }
+
+      copy_associations_after_creation!(copied_to, selected_associations)
+      
       issue.relations_from.create(issue_to_id: copied_to.id, relation_type: "copied_to")
       logger.info("RecurringTask ##{id}: issue ##{issue.id} copied to ##{copied_to&.id}")
     rescue ActiveRecord::StaleObjectError
@@ -192,6 +190,45 @@ class RecurringTask < ActiveRecord::Base
   end
 
   private
+
+  def copy_associations_after_creation!(copied_issue, associations)
+    associations.each do |association_name|
+      begin
+        logger.info("RecurringTask ##{id}: copying association #{association_name} for issue ##{copied_issue.id}")
+        copy_single_association!(copied_issue, association_name)
+      rescue StandardError => e
+        logger.error("RecurringTask ##{id}: association #{association_name} copy failed for issue ##{copied_issue.id}: #{e.message}")
+      end
+    end
+  end
+
+  def copy_single_association!(copied_issue, association_name)
+    case association_name
+    when 'taggings', 'tags'
+      copied_issue.taggings.destroy_all if copied_issue.respond_to?(:taggings)
+      issue.tags.each { |tag| copied_issue.tags << tag } if copied_issue.respond_to?(:tags)
+    when 'watcher_users', 'watchers'
+      copied_issue.watcher_user_ids = issue.watcher_users.select { |u| u.status == User::STATUS_ACTIVE }.map(&:id)
+    when 'attachments'
+      copied_issue.attachments = issue.attachments.map { |attachment| attachment.copy(container: copied_issue) }
+    else
+      reflection = Issue.reflect_on_association(association_name.to_sym)
+      return if reflection.nil?
+
+      return unless reflection.collection?
+
+      source_records = issue.public_send(association_name)
+      ids_writer = "#{association_name.to_s.singularize}_ids="
+
+      if copied_issue.respond_to?(ids_writer) && source_records.respond_to?(:pluck)
+        copied_issue.public_send(ids_writer, source_records.pluck(:id))
+      elsif copied_issue.respond_to?(ids_writer)
+        copied_issue.public_send(ids_writer, source_records.map(&:id))
+      else
+        logger.info("RecurringTask ##{id}: skipped association #{association_name}; no ids writer present")
+      end
+    end
+  end
 
   def log_error(e)
     logger.error e.to_s

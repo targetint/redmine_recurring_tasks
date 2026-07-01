@@ -224,6 +224,16 @@ class RecurringTask < ActiveRecord::Base
       copied_issue.watcher_user_ids = issue.watcher_users.select { |u| u.status == User::STATUS_ACTIVE }.map(&:id)
     when 'attachments'
       copied_issue.attachments = issue.attachments.map { |attachment| attachment.copy(container: copied_issue) }
+    when 'checklists'
+      # Clone checklist rows onto the copy. Do NOT use checklist_ids=,
+      # which reassigns the existing rows' issue_id and strips them off the
+      # source ticket. Each item starts unchecked on the new occurrence.
+      return unless copied_issue.respond_to?(:checklists)
+      issue.checklists.reorder(:position).each do |checklist|
+        attributes = checklist.attributes.except('id', 'issue_id', 'created_at', 'updated_at')
+        attributes['is_done'] = false if attributes.key?('is_done')
+        copied_issue.checklists.create!(attributes)
+      end
     else
       reflection = Issue.reflect_on_association(association_name.to_sym)
       return if reflection.nil?

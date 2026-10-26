@@ -146,6 +146,12 @@ class RecurringTask < ActiveRecord::Base
       end.tap { |copy| copy.save!(validate: false) }
 
       copy_associations_after_creation!(copied_to, selected_associations)
+
+      # Watchers and attachments are listed as "always preserved" in
+      # RedmineRecurringTasks.issue_associations, so they can never be picked in the
+      # plugin settings. Copy them here unconditionally (as before commit 0d51539).
+      copy_watchers!(copied_to)
+      copy_attachments!(copied_to)
       
       issue.relations_from.create(issue_to_id: copied_to.id, relation_type: "copied_to")
       logger.info("RecurringTask ##{id}: issue ##{issue.id} copied to ##{copied_to&.id}")
@@ -192,7 +198,8 @@ class RecurringTask < ActiveRecord::Base
   private
 
   def normalize_associations(associations)
-    Array(associations).map(&:to_s).reject(&:blank?).map do |association_name|
+    always_copied = %w[watchers watcher_users attachments] # handled by copy_watchers! / copy_attachments!
+    Array(associations).map(&:to_s).reject(&:blank?).reject { |a| always_copied.include?(a) }.map do |association_name|
       case association_name
       when 'taggings', 'base_tags', 'tag_taggings', 'tags'
         'tags'
@@ -211,6 +218,39 @@ class RecurringTask < ActiveRecord::Base
         logger.error("RecurringTask ##{id}: association #{association_name} copy failed for issue ##{copied_issue.id}: #{e.message}")
       end
     end
+  end
+
+  # Adds every active watcher (user or group) of the template issue to the copy.
+  # One invalid watcher does not stop the others from being added.
+  def copy_watchers!(copied_issue)
+    added = []
+    issue.watcher_users.each do |principal|
+      next unless principal.active?
+      next if copied_issue.watched_by?(principal)
+
+      watcher = Watcher.new(watchable: copied_issue, user: principal)
+      unless watcher.save
+        logger.error("RecurringTask ##{id}: watcher #{principal.name} (##{principal.id}) not added to " \
+                     "issue ##{copied_issue.id}: #{watcher.errors.full_messages.join(', ')}")
+      else
+        added << principal.id
+      end
+    rescue StandardError => e
+      logger.error("RecurringTask ##{id}: watcher ##{principal.id} not added to issue ##{copied_issue.id}: #{e.message}")
+    end
+    copied_issue.watcher_users.reset
+    logger.info("RecurringTask ##{id}: copied #{added.size} watcher(s) #{added.inspect} to issue ##{copied_issue.id}")
+  end
+
+  def copy_attachments!(copied_issue)
+    return if issue.attachments.empty?
+
+    issue.attachments.each do |attachment|
+      copied_issue.attachments << attachment.copy(container: copied_issue)
+    end
+    logger.info("RecurringTask ##{id}: copied #{issue.attachments.size} attachment(s) to issue ##{copied_issue.id}")
+  rescue StandardError => e
+    logger.error("RecurringTask ##{id}: attachments copy failed for issue ##{copied_issue.id}: #{e.message}")
   end
 
   def copy_single_association!(copied_issue, association_name)
